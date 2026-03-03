@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portsmouth Weather Cat</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.8s ease;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Weather-based backgrounds */
+        body.sunny { background: linear-gradient(135deg, #ffecd2 0%, #fcb69f 100%); }
+        body.cloudy { background: linear-gradient(135deg, #d7d2cc 0%, #b4afa9 100%); }
+        body.rainy { background: linear-gradient(135deg, #89a0b4 0%, #636fa4 100%); }
+        body.snowy { background: linear-gradient(135deg, #e6e9f0 0%, #c8d6e5 100%); }
+        body.stormy { background: linear-gradient(135deg, #4a4a6a 0%, #2c2c3e 100%); }
+        body.foggy { background: linear-gradient(135deg, #c9ccd3 0%, #9fa5ae 100%); }
+        body.night { background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%); }
+        body.loading { background: #faf9f6; }
+
+        .container {
+            text-align: center;
+            padding: 1rem;
+            z-index: 2;
+        }
+
+        #cat-display {
+            width: 280px;
+            height: 280px;
+            margin: 0 auto 1.5rem;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #cat-display svg {
+            width: 100%;
+            height: 100%;
+        }
+
+        .weather-info {
+            font-size: 1.1rem;
+            font-weight: 300;
+            margin-bottom: 0.5rem;
+            transition: color 0.8s;
+        }
+
+        .temp {
+            font-size: 2.5rem;
+            font-weight: 200;
+            margin-bottom: 0.3rem;
+        }
+
+        .location {
+            font-size: 0.85rem;
+            opacity: 0.6;
+            margin-bottom: 1.5rem;
+        }
+
+        .hint {
+            font-size: 0.85rem;
+            opacity: 0.5;
+            margin-top: 1rem;
+        }
+
+        body.rainy .weather-info,
+        body.stormy .weather-info,
+        body.night .weather-info { color: #e0e0e0; }
+        body.stormy .temp,
+        body.night .temp { color: #fff; }
+        body.rainy .temp { color: #f0f0f0; }
+
+        .back-link {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            text-decoration: none;
+            color: inherit;
+            opacity: 0.5;
+            font-size: 0.9rem;
+            z-index: 10;
+        }
+
+        /* Rain drops */
+        .rain-container {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 1;
+            overflow: hidden;
+            display: none;
+        }
+        body.rainy .rain-container,
+        body.stormy .rain-container { display: block; }
+
+        .raindrop {
+            position: absolute;
+            top: -20px;
+            width: 2px;
+            height: 15px;
+            background: rgba(255,255,255,0.3);
+            border-radius: 0 0 2px 2px;
+            animation: fall linear infinite;
+        }
+
+        @keyframes fall {
+            to { transform: translateY(110vh); }
+        }
+
+        /* Snow */
+        .snow-container {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 1;
+            overflow: hidden;
+            display: none;
+        }
+        body.snowy .snow-container { display: block; }
+
+        .snowflake {
+            position: absolute;
+            top: -10px;
+            width: 8px;
+            height: 8px;
+            background: rgba(255,255,255,0.8);
+            border-radius: 50%;
+            animation: snowfall linear infinite;
+        }
+
+        @keyframes snowfall {
+            to { transform: translateY(110vh) translateX(30px); }
+        }
+    </style>
+</head>
+<body class="loading">
+    <a href="/" class="back-link">&larr; home</a>
+
+    <div class="rain-container" id="rain"></div>
+    <div class="snow-container" id="snow"></div>
+
+    <div class="container">
+        <div id="cat-display"></div>
+        <div class="temp" id="temp">...</div>
+        <div class="weather-info" id="weather-desc">fetching weather...</div>
+        <div class="location">Portsmouth, UK</div>
+        <div class="hint">tap the cat</div>
+    </div>
+
+    <script>
+    (function () {
+        // WMO Weather codes mapping
+        var weatherMap = {
+            0: { type: 'sunny', desc: 'Clear sky' },
+            1: { type: 'sunny', desc: 'Mostly clear' },
+            2: { type: 'cloudy', desc: 'Partly cloudy' },
+            3: { type: 'cloudy', desc: 'Overcast' },
+            45: { type: 'foggy', desc: 'Foggy' },
+            48: { type: 'foggy', desc: 'Depositing rime fog' },
+            51: { type: 'rainy', desc: 'Light drizzle' },
+            53: { type: 'rainy', desc: 'Moderate drizzle' },
+            55: { type: 'rainy', desc: 'Dense drizzle' },
+            56: { type: 'rainy', desc: 'Freezing drizzle' },
+            57: { type: 'rainy', desc: 'Heavy freezing drizzle' },
+            61: { type: 'rainy', desc: 'Slight rain' },
+            63: { type: 'rainy', desc: 'Moderate rain' },
+            65: { type: 'rainy', desc: 'Heavy rain' },
+            66: { type: 'rainy', desc: 'Freezing rain' },
+            67: { type: 'rainy', desc: 'Heavy freezing rain' },
+            71: { type: 'snowy', desc: 'Slight snow' },
+            73: { type: 'snowy', desc: 'Moderate snow' },
+            75: { type: 'snowy', desc: 'Heavy snow' },
+            77: { type: 'snowy', desc: 'Snow grains' },
+            80: { type: 'rainy', desc: 'Rain showers' },
+            81: { type: 'rainy', desc: 'Moderate rain showers' },
+            82: { type: 'stormy', desc: 'Violent rain showers' },
+            85: { type: 'snowy', desc: 'Snow showers' },
+            86: { type: 'snowy', desc: 'Heavy snow showers' },
+            95: { type: 'stormy', desc: 'Thunderstorm' },
+            96: { type: 'stormy', desc: 'Thunderstorm with hail' },
+            99: { type: 'stormy', desc: 'Thunderstorm with heavy hail' }
+        };
+
+        // Cat color palettes
+        var catColors = [
+            { body: '#f4a460', stripe: '#d2813a', name: 'orange tabby' },
+            { body: '#2c2c2c', stripe: '#1a1a1a', name: 'black cat' },
+            { body: '#f5f5f5', stripe: '#e0e0e0', name: 'white cat' },
+            { body: '#888888', stripe: '#666666', name: 'grey cat' },
+            { body: '#d4a574', stripe: '#b8875a', name: 'ginger cat' },
+            { body: '#f5deb3', stripe: '#d4b896', name: 'cream cat' },
+            { body: '#a0522d', stripe: '#8b4513', name: 'brown cat' },
+            { body: '#708090', stripe: '#556677', name: 'blue cat' }
+        ];
+
+        var currentCat = null;
+        var currentWeather = null;
+        var meowing = false;
+
+        function seededRandom(seed) {
+            var x = Math.sin(seed) * 10000;
+            return x - Math.floor(x);
+        }
+
+        function pickCat() {
+            var seed = Date.now();
+            var idx = Math.floor(seededRandom(seed) * catColors.length);
+            return catColors[idx];
+        }
+
+        function generateCatSVG(weatherType, cat) {
+            var b = cat.body;
+            var s = cat.stripe;
+            var isRainy = weatherType === 'rainy' || weatherType === 'stormy';
+            var isSnowy = weatherType === 'snowy';
+            var isSunny = weatherType === 'sunny';
+            var isFoggy = weatherType === 'foggy';
+            var isNight = weatherType === 'night';
+
+            // Eyes change with weather
+            var eyeStyle = '';
+            var eyeExtra = '';
+            var mouthPath = 'M 120 175 Q 130 182 140 175'; // default smile
+
+            if (isSunny) {
+                // Sunglasses
+                eyeExtra = '<rect x="104" y="138" width="28" height="18" rx="9" fill="#222" opacity="0.85"/>' +
+                    '<rect x="148" y="138" width="28" height="18" rx="9" fill="#222" opacity="0.85"/>' +
+                    '<line x1="132" y1="147" x2="148" y2="147" stroke="#222" stroke-width="2"/>';
+            } else if (isRainy || weatherType === 'stormy') {
+                // Annoyed half-closed eyes
+                eyeStyle = '<ellipse cx="118" cy="148" rx="7" ry="4" fill="#222"/>' +
+                    '<ellipse cx="162" cy="148" rx="7" ry="4" fill="#222"/>' +
+                    '<line x1="108" y1="140" x2="128" y2="143" stroke="' + s + '" stroke-width="2.5" stroke-linecap="round"/>' +
+                    '<line x1="172" y1="140" x2="152" y2="143" stroke="' + s + '" stroke-width="2.5" stroke-linecap="round"/>';
+                mouthPath = 'M 122 178 Q 130 173 138 178'; // frown
+            } else if (isSnowy) {
+                // Wide sparkly eyes
+                eyeStyle = '<circle cx="118" cy="148" r="8" fill="#222"/>' +
+                    '<circle cx="162" cy="148" r="8" fill="#222"/>' +
+                    '<circle cx="121" cy="145" r="3" fill="#fff"/>' +
+                    '<circle cx="165" cy="145" r="3" fill="#fff"/>';
+            } else if (isFoggy) {
+                // Squinty
+                eyeStyle = '<line x1="110" y1="148" x2="126" y2="148" stroke="#222" stroke-width="3" stroke-linecap="round"/>' +
+                    '<line x1="154" y1="148" x2="170" y2="148" stroke="#222" stroke-width="3" stroke-linecap="round"/>';
+                mouthPath = 'M 125 178 L 135 178'; // neutral
+            } else {
+                // Normal happy eyes
+                eyeStyle = '<circle cx="118" cy="148" r="6" fill="#222"/>' +
+                    '<circle cx="162" cy="148" r="6" fill="#222"/>' +
+                    '<circle cx="120" cy="146" r="2" fill="#fff"/>' +
+                    '<circle cx="164" cy="146" r="2" fill="#fff"/>';
+            }
+
+            // Accessories based on weather
+            var accessory = '';
+            if (isRainy) {
+                // Umbrella
+                accessory = '<g transform="translate(170, 50)">' +
+                    '<line x1="20" y1="0" x2="20" y2="80" stroke="#e74c3c" stroke-width="3" stroke-linecap="round"/>' +
+                    '<path d="M -15 30 Q 20 -10 55 30" fill="#e74c3c" stroke="#c0392b" stroke-width="1.5"/>' +
+                    '<path d="M 16 80 Q 12 90 18 92" stroke="#e74c3c" stroke-width="3" fill="none" stroke-linecap="round"/>' +
+                    '</g>';
+            } else if (isSnowy) {
+                // Scarf
+                accessory = '<path d="M 95 190 Q 90 195 92 205 Q 100 215 108 210 Q 140 200 172 210 Q 180 215 188 205 Q 190 195 185 190" fill="#e74c3c" stroke="#c0392b" stroke-width="1"/>' +
+                    '<rect x="170" y="200" width="15" height="30" rx="4" fill="#e74c3c" stroke="#c0392b" stroke-width="1"/>' +
+                    '<line x1="170" y1="208" x2="185" y2="208" stroke="#c0392b" stroke-width="1"/>' +
+                    '<line x1="170" y1="218" x2="185" y2="218" stroke="#c0392b" stroke-width="1"/>';
+            } else if (isSunny) {
+                // Sun behind cat
+                accessory = '<circle cx="230" cy="50" r="30" fill="#ffd93d" opacity="0.5"/>' +
+                    '<circle cx="230" cy="50" r="20" fill="#ffd93d" opacity="0.8"/>';
+            }
+
+            // Tail animation
+            var tailAnim = '<animateTransform attributeName="transform" type="rotate" from="-10 200 230" to="10 200 230" dur="1.5s" repeatCount="indefinite" additive="sum" calcMode="spline" keySplines="0.4 0 0.6 1" keyTimes="0;1" />';
+
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 280">' +
+                accessory +
+                // Tail
+                '<g>' +
+                '<path d="M 195 230 Q 230 210 240 180 Q 250 160 235 150" stroke="' + b + '" stroke-width="14" fill="none" stroke-linecap="round"/>' +
+                tailAnim +
+                '</g>' +
+                // Body
+                '<ellipse cx="140" cy="230" rx="65" ry="40" fill="' + b + '"/>' +
+                // Head
+                '<circle cx="140" cy="150" r="55" fill="' + b + '"/>' +
+                // Ears
+                '<polygon points="98,110 85,60 118,100" fill="' + b + '"/>' +
+                '<polygon points="182,110 195,60 162,100" fill="' + b + '"/>' +
+                '<polygon points="100,108 92,72 116,100" fill="' + s + '" opacity="0.5"/>' +
+                '<polygon points="180,108 188,72 164,100" fill="' + s + '" opacity="0.5"/>' +
+                // Stripes on forehead
+                '<path d="M 125 115 Q 140 105 155 115" stroke="' + s + '" stroke-width="2.5" fill="none" opacity="0.4"/>' +
+                '<path d="M 128 122 Q 140 114 152 122" stroke="' + s + '" stroke-width="2" fill="none" opacity="0.3"/>' +
+                // Eyes
+                (eyeStyle || '') +
+                (eyeExtra || '') +
+                // Nose
+                '<polygon points="137,160 143,160 140,165" fill="#ffb6c1"/>' +
+                // Mouth
+                '<path d="' + mouthPath + '" stroke="#222" stroke-width="1.5" fill="none" stroke-linecap="round"/>' +
+                // Whiskers
+                '<line x1="85" y1="158" x2="115" y2="162" stroke="#222" stroke-width="1" opacity="0.4"/>' +
+                '<line x1="85" y1="168" x2="115" y2="167" stroke="#222" stroke-width="1" opacity="0.4"/>' +
+                '<line x1="195" y1="158" x2="165" y2="162" stroke="#222" stroke-width="1" opacity="0.4"/>' +
+                '<line x1="195" y1="168" x2="165" y2="167" stroke="#222" stroke-width="1" opacity="0.4"/>' +
+                // Front paws
+                '<ellipse cx="115" cy="260" rx="18" ry="10" fill="' + b + '"/>' +
+                '<ellipse cx="165" cy="260" rx="18" ry="10" fill="' + b + '"/>' +
+                // Paw lines
+                '<path d="M 109 260 Q 112 255 115 260" stroke="' + s + '" stroke-width="1" fill="none" opacity="0.3"/>' +
+                '<path d="M 115 260 Q 118 255 121 260" stroke="' + s + '" stroke-width="1" fill="none" opacity="0.3"/>' +
+                '<path d="M 159 260 Q 162 255 165 260" stroke="' + s + '" stroke-width="1" fill="none" opacity="0.3"/>' +
+                '<path d="M 165 260 Q 168 255 171 260" stroke="' + s + '" stroke-width="1" fill="none" opacity="0.3"/>' +
+                '</svg>';
+
+            return svg;
+        }
+
+        function createRain() {
+            var container = document.getElementById('rain');
+            container.innerHTML = '';
+            for (var i = 0; i < 60; i++) {
+                var drop = document.createElement('div');
+                drop.className = 'raindrop';
+                drop.style.left = Math.random() * 100 + '%';
+                drop.style.animationDuration = (0.5 + Math.random() * 0.5) + 's';
+                drop.style.animationDelay = Math.random() * 2 + 's';
+                drop.style.opacity = 0.2 + Math.random() * 0.4;
+                container.appendChild(drop);
+            }
+        }
+
+        function createSnow() {
+            var container = document.getElementById('snow');
+            container.innerHTML = '';
+            for (var i = 0; i < 40; i++) {
+                var flake = document.createElement('div');
+                flake.className = 'snowflake';
+                flake.style.left = Math.random() * 100 + '%';
+                flake.style.animationDuration = (3 + Math.random() * 4) + 's';
+                flake.style.animationDelay = Math.random() * 3 + 's';
+                flake.style.width = (4 + Math.random() * 6) + 'px';
+                flake.style.height = flake.style.width;
+                container.appendChild(flake);
+            }
+        }
+
+        function showMeow() {
+            if (meowing) return;
+            meowing = true;
+            var display = document.getElementById('cat-display');
+            display.style.transform = 'scale(1.1)';
+            display.style.transition = 'transform 0.15s ease';
+
+            var hint = document.querySelector('.hint');
+            var meows = ['meow!', 'mrrp!', 'prrr...', 'mew!', 'hiss!', '*purrs*', 'mrow!', '*blink blink*'];
+            hint.textContent = meows[Math.floor(Math.random() * meows.length)];
+            hint.style.opacity = '1';
+            hint.style.fontSize = '1.1rem';
+
+            setTimeout(function () {
+                display.style.transform = 'scale(1)';
+            }, 150);
+
+            setTimeout(function () {
+                // New cat on tap
+                currentCat = pickCat();
+                display.innerHTML = generateCatSVG(currentWeather || 'sunny', currentCat);
+                hint.textContent = 'tap the cat';
+                hint.style.opacity = '0.5';
+                hint.style.fontSize = '0.85rem';
+                meowing = false;
+            }, 800);
+        }
+
+        function isNightTime() {
+            // Rough check: if it's between 8pm and 6am in UK
+            var now = new Date();
+            var ukHour = new Date(now.toLocaleString('en-US', { timeZone: 'Europe/London' })).getHours();
+            return ukHour >= 20 || ukHour < 6;
+        }
+
+        function fetchWeather() {
+            var url = 'https://api.open-meteo.com/v1/forecast?latitude=50.8058&longitude=-1.0872&current=temperature_2m,weather_code,wind_speed_10m&timezone=Europe/London';
+
+            fetch(url)
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    var temp = Math.round(data.current.temperature_2m);
+                    var code = data.current.weather_code;
+                    var weather = weatherMap[code] || { type: 'cloudy', desc: 'Unknown' };
+
+                    // Override to night theme if it's nighttime and clear/cloudy
+                    if (isNightTime() && (weather.type === 'sunny' || weather.type === 'cloudy')) {
+                        currentWeather = 'night';
+                        document.body.className = 'night';
+                        document.getElementById('weather-desc').textContent = weather.desc + ' (night)';
+                    } else {
+                        currentWeather = weather.type;
+                        document.body.className = weather.type;
+                        document.getElementById('weather-desc').textContent = weather.desc;
+                    }
+
+                    document.getElementById('temp').textContent = temp + '\u00B0C';
+
+                    currentCat = pickCat();
+                    document.getElementById('cat-display').innerHTML = generateCatSVG(currentWeather, currentCat);
+
+                    if (currentWeather === 'rainy' || currentWeather === 'stormy') createRain();
+                    if (currentWeather === 'snowy') createSnow();
+                })
+                .catch(function () {
+                    document.getElementById('weather-desc').textContent = 'could not fetch weather';
+                    document.body.className = 'cloudy';
+                    currentWeather = 'cloudy';
+                    currentCat = pickCat();
+                    document.getElementById('cat-display').innerHTML = generateCatSVG('cloudy', currentCat);
+                });
+        }
+
+        document.getElementById('cat-display').addEventListener('click', showMeow);
+        document.getElementById('cat-display').addEventListener('touchstart', function (e) {
+            e.preventDefault();
+            showMeow();
+        }, { passive: false });
+
+        fetchWeather();
+    })();
+    </script>
+</body>
+</html>
