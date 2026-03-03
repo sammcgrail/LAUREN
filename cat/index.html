@@ -317,86 +317,46 @@
                 '</svg>';
         }
 
-        // ---- AI IMAGE PROMPTS ----
-        var catPrompts = {
-            sunny: [
-                'cute happy cat wearing tiny sunglasses lounging in warm sunshine, golden hour light, adorable, photo',
-                'fluffy cat basking in a sunbeam on a windowsill, warm cozy vibes, cute, photo',
-                'orange tabby cat stretching happily in a sunny garden, bright cheerful, photo',
-                'cat with eyes closed enjoying warm sun on its face, peaceful content, photo'
-            ],
-            cloudy: [
-                'cozy cat curled up on a grey day looking out a window, moody atmospheric, cute, photo',
-                'sleepy cat napping on a soft blanket on an overcast day, cozy vibes, photo',
-                'fluffy grey cat sitting calmly on a cloudy day, soft diffused light, cute, photo',
-                'cat sitting on a windowsill watching grey clouds drift by, contemplative, cute, photo'
-            ],
-            rainy: [
-                'grumpy cat looking annoyed at rain through a window, wet glass droplets, funny cute, photo',
-                'cat with a tiny raincoat looking unimpressed in the rain, adorable funny, photo',
-                'fluffy cat pressing its nose against a rainy window, moody cozy, cute, photo',
-                'cat hiding under a blanket during a rainstorm, cozy and grumpy, cute, photo'
-            ],
-            snowy: [
-                'fluffy cat in a tiny knitted scarf watching snow fall, cozy winter vibes, adorable, photo',
-                'cat with snowflakes on its whiskers looking amazed, winter wonderland, cute, photo',
-                'kitten seeing snow for the first time through a frosty window, wide eyes, adorable, photo',
-                'fluffy white cat blending into snowy scenery, only eyes visible, cute funny, photo'
-            ],
-            stormy: [
-                'dramatic cat with wind-blown fur during a storm, intense eyes, cinematic, photo',
-                'cat hiding under furniture during thunder, big scared eyes, cute funny, photo',
-                'brave cat sitting in front of a stormy sky, dramatic lighting, majestic, photo',
-                'cat with puffed up fur startled by lightning, funny cute, photo'
-            ],
-            foggy: [
-                'mysterious cat emerging from thick fog, ethereal atmospheric, beautiful, photo',
-                'cat with squinted eyes in misty foggy weather, moody mysterious, cute, photo',
-                'silhouette of a cat in dense fog, spooky atmospheric, artistic, photo',
-                'sleepy cat barely visible through morning fog, dreamy soft, cute, photo'
-            ],
-            night: [
-                'cat with glowing eyes sitting in moonlight, mysterious beautiful, night photography, photo',
-                'black cat silhouette against a full moon, dramatic night sky, artistic, photo',
-                'cozy cat curled up by a warm lamp at night, soft warm lighting, cute, photo',
-                'cat sitting on a rooftop looking at stars, peaceful night scene, beautiful, photo'
-            ]
-        };
+        // ---- CAT PHOTO SOURCES ----
+        // Primary: cataas.com (real cat photos, free, no key)
+        // Fallback: TheCatAPI (real cat photos, free, no key for basic)
+        // Instant fallback: SVG cat while photos load
 
         var currentWeather = null;
         var tapping = false;
         var retryTimer = null;
-        var maxRetries = 3;
 
         function showSVGCat(weatherType) {
             var display = document.getElementById('cat-display');
-            // Remove existing SVG if any
             var oldSvg = display.querySelector('svg');
             if (oldSvg) oldSvg.remove();
             var cat = pickCatColor();
             display.insertAdjacentHTML('afterbegin', generateCatSVG(weatherType, cat));
         }
 
-        function tryLoadAIImage(weatherType, attempt) {
-            if (attempt > maxRetries) return; // give up silently, SVG stays
+        function loadCatPhoto(attempt) {
+            if (attempt > 3) return; // give up, SVG stays
 
             var display = document.getElementById('cat-display');
             var hint = document.getElementById('hint');
 
-            var prompts = catPrompts[weatherType] || catPrompts.cloudy;
-            var prompt = prompts[Math.floor(Math.random() * prompts.length)];
-            var seed = Math.floor(Math.random() * 999999);
-
-            var url = 'https://image.pollinations.ai/prompt/' +
-                encodeURIComponent(prompt) +
-                '?width=640&height=640&seed=' + seed + '&nologo=true';
-
-            // Remove previous AI image attempt
+            // Remove previous photo attempt
             var oldImg = display.querySelector('img');
             if (oldImg) oldImg.remove();
 
             var img = new Image();
             img.crossOrigin = 'anonymous';
+
+            // Alternate between sources on retry
+            var cacheBust = Date.now() + '_' + Math.random();
+            var url;
+            if (attempt <= 2) {
+                // Try cataas.com first (cache-bust to get a new cat each time)
+                url = 'https://cataas.com/cat?t=' + cacheBust;
+            } else {
+                // Fallback to TheCatAPI via direct image
+                url = 'https://cdn2.thecatapi.com/images/' + randomCatId() + '.jpg';
+            }
 
             img.onload = function () {
                 display.appendChild(img);
@@ -409,10 +369,10 @@
             };
 
             img.onerror = function () {
-                // Retry with exponential backoff: 5s, 10s, 20s
-                var delay = 5000 * Math.pow(2, attempt - 1);
+                // Retry with backoff: 2s, 4s, 8s
+                var delay = 2000 * Math.pow(2, attempt - 1);
                 retryTimer = setTimeout(function () {
-                    tryLoadAIImage(weatherType, attempt + 1);
+                    loadCatPhoto(attempt + 1);
                 }, delay);
                 tapping = false;
             };
@@ -420,11 +380,16 @@
             img.src = url;
         }
 
+        // Simple list of known TheCatAPI image IDs as a last-resort fallback
+        var knownCatIds = ['0XYvRd7oD','MTUwMjkwNg','MjA1MzI0Ng','MTUwNjQ1Mg','ai6','ebv','a8m','3bp','5hf','dhn'];
+        function randomCatId() {
+            return knownCatIds[Math.floor(Math.random() * knownCatIds.length)];
+        }
+
         function showCat(weatherType) {
             if (tapping) return;
             tapping = true;
 
-            // Clear any pending retry
             if (retryTimer) {
                 clearTimeout(retryTimer);
                 retryTimer = null;
@@ -437,8 +402,8 @@
             hint.textContent = 'tap for a new cat';
             hint.style.opacity = '0.5';
 
-            // Try to load AI image on top
-            tryLoadAIImage(weatherType, 1);
+            // Try to load a real cat photo on top
+            loadCatPhoto(1);
         }
 
         function createRain() {
