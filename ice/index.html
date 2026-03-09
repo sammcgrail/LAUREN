@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ice</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a1628;
+            min-height: 100vh;
+            min-height: 100dvh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            position: relative;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        .photo {
+            max-width: 100%;
+            max-height: 100vh;
+            max-height: 100dvh;
+            display: block;
+            position: relative;
+            z-index: 1;
+        }
+
+        canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .back-link {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            text-decoration: none;
+            color: rgba(255,255,255,0.5);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-size: 0.9rem;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="back-link">&larr; home</a>
+    <img src="ice.jpg" alt="Ice climbing" class="photo">
+    <canvas id="snow"></canvas>
+
+    <script>
+    (function () {
+        var canvas = document.getElementById('snow');
+        var ctx = canvas.getContext('2d');
+        var flakes = [];
+        var baseCount = 40;
+        var dpr = window.devicePixelRatio || 1;
+
+        function resize() {
+            canvas.width = window.innerWidth * dpr;
+            canvas.height = window.innerHeight * dpr;
+            ctx.scale(dpr, dpr);
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        function Flake(x, y, burst) {
+            this.x = x !== undefined ? x : Math.random() * window.innerWidth;
+            this.y = y !== undefined ? y : -10;
+            this.r = 1 + Math.random() * 2.5;
+            this.opacity = 0.3 + Math.random() * 0.5;
+            this.vy = 0.3 + Math.random() * 0.8;
+            this.vx = (Math.random() - 0.5) * 0.4;
+            this.wobbleAmp = 0.3 + Math.random() * 0.5;
+            this.wobbleSpeed = 0.01 + Math.random() * 0.02;
+            this.t = Math.random() * Math.PI * 2;
+            this.life = burst ? 200 + Math.random() * 300 : Infinity;
+            this.age = 0;
+            if (burst) {
+                this.vy = 0.5 + Math.random() * 1.2;
+                this.vx = (Math.random() - 0.5) * 1.5;
+                this.r = 1.5 + Math.random() * 3;
+                this.opacity = 0.5 + Math.random() * 0.4;
+            }
+        }
+
+        // Seed initial ambient flakes
+        for (var i = 0; i < baseCount; i++) {
+            var f = new Flake();
+            f.y = Math.random() * window.innerHeight;
+            flakes.push(f);
+        }
+
+        // Spawn burst on tap/click
+        function spawnBurst(x, y) {
+            var count = 15 + Math.floor(Math.random() * 15);
+            for (var i = 0; i < count; i++) {
+                var ox = x + (Math.random() - 0.5) * 80;
+                var oy = y + (Math.random() - 0.5) * 40 - 20;
+                flakes.push(new Flake(ox, oy, true));
+            }
+        }
+
+        document.body.addEventListener('click', function (e) {
+            spawnBurst(e.clientX, e.clientY);
+        });
+        document.body.addEventListener('touchstart', function (e) {
+            for (var i = 0; i < e.touches.length; i++) {
+                spawnBurst(e.touches[i].clientX, e.touches[i].clientY);
+            }
+        }, { passive: true });
+
+        function draw() {
+            ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+            var w = window.innerWidth;
+            var h = window.innerHeight;
+
+            for (var i = flakes.length - 1; i >= 0; i--) {
+                var f = flakes[i];
+                f.t += f.wobbleSpeed;
+                f.x += f.vx + Math.sin(f.t) * f.wobbleAmp;
+                f.y += f.vy;
+                f.age++;
+
+                // Fade out burst flakes near end of life
+                var alpha = f.opacity;
+                if (f.life !== Infinity) {
+                    var remaining = f.life - f.age;
+                    if (remaining < 60) alpha *= remaining / 60;
+                }
+
+                // Remove dead or off-screen flakes
+                if (f.y > h + 10 || f.age > f.life || alpha <= 0) {
+                    if (f.life === Infinity) {
+                        // Respawn ambient flake at top
+                        f.x = Math.random() * w;
+                        f.y = -10;
+                        f.t = Math.random() * Math.PI * 2;
+                    } else {
+                        flakes.splice(i, 1);
+                    }
+                    continue;
+                }
+
+                ctx.beginPath();
+                ctx.arc(f.x, f.y, f.r, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(255, 255, 255, ' + alpha + ')';
+                ctx.fill();
+            }
+
+            requestAnimationFrame(draw);
+        }
+
+        draw();
+    })();
+    </script>
+</body>
+</html>
