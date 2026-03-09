@@ -133,7 +133,7 @@
 
     <div class="layer-switcher">
         <button class="layer-btn active" data-layer="radar">Radar</button>
-        <button class="layer-btn" data-layer="infrared">Infrared</button>
+        <button class="layer-btn" data-layer="cloudtemp">Cloud Temp</button>
         <button class="layer-btn" data-layer="satellite">Satellite</button>
         <button class="layer-btn" data-layer="clouds">Clouds</button>
     </div>
@@ -237,34 +237,18 @@
                 });
         }
 
-        // INFRARED (RainViewer satellite infrared - from same API)
-        var infraredState = { layer: null, path: '' };
+        // Yesterday's date for GIBS (MODIS data has ~1 day lag)
+        var yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
 
-        function loadInfraredData() {
-            fetch('https://api.rainviewer.com/public/weather-maps.json')
-                .then(function (r) { return r.json(); })
-                .then(function (data) {
-                    var sat = data.satellite && data.satellite.infrared;
-                    if (!sat || sat.length === 0) return;
-                    var latest = sat[sat.length - 1];
-                    if (latest.path === infraredState.path) return;
-                    infraredState.path = latest.path;
-                    if (infraredState.layer) map.removeLayer(infraredState.layer);
-                    infraredState.layer = L.tileLayer(
-                        data.host + latest.path + '/256/{z}/{x}/{y}/0/0_0.png', {
-                        opacity: 0,
-                        maxZoom: 6,
-                        maxNativeZoom: 7,
-                        zIndex: 15
-                    });
-                    infraredState.layer.addTo(map);
-                    if (activeLayer === 'infrared') {
-                        infraredState.layer.setOpacity(0.75);
-                        timeBadge.textContent = formatTime(latest.time);
-                    }
-                })
-                .catch(function (err) { console.error('IR error:', err); });
-        }
+        // CLOUD TOP TEMPERATURE (NASA GIBS MODIS - shows cloud height/temp in IR)
+        var cloudTempLayer = L.tileLayer(
+            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_Cloud_Top_Temp_Day/default/' + yesterday + '/GoogleMapsCompatible_Level6/{z}/{y}/{x}.png', {
+            attribution: '<a href="https://earthdata.nasa.gov">NASA GIBS</a> MODIS Cloud Top Temp',
+            maxZoom: 6,
+            maxNativeZoom: 6,
+            zIndex: 15,
+            opacity: 0.8
+        });
 
         // SATELLITE (EOX Sentinel-2 cloudless)
         var satelliteLayer = L.tileLayer(
@@ -275,15 +259,14 @@
             opacity: 0.85
         });
 
-        // CLOUDS (RainViewer radar coverage as cloud proxy + EUMETSAT via NASA GIBS)
+        // CLOUDS (NASA GIBS MODIS true-color reflectance)
         var cloudsLayer = L.tileLayer(
-            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/{time}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg', {
-            attribution: '<a href="https://earthdata.nasa.gov">NASA GIBS</a>',
+            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/' + yesterday + '/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg', {
+            attribution: '<a href="https://earthdata.nasa.gov">NASA GIBS</a> MODIS True Color',
             maxZoom: 6,
             maxNativeZoom: 9,
             zIndex: 15,
-            opacity: 0.85,
-            time: new Date().toISOString().split('T')[0]
+            opacity: 0.85
         });
 
         // --- Layer switching ---
@@ -292,14 +275,9 @@
                 show: showRadar,
                 hide: hideAllRadar
             },
-            infrared: {
-                show: function () {
-                    if (infraredState.layer) infraredState.layer.setOpacity(0.75);
-                    timeBadge.style.display = '';
-                },
-                hide: function () {
-                    if (infraredState.layer) infraredState.layer.setOpacity(0);
-                }
+            cloudtemp: {
+                show: function () { cloudTempLayer.addTo(map); },
+                hide: function () { map.removeLayer(cloudTempLayer); }
             },
             satellite: {
                 show: function () { satelliteLayer.addTo(map); },
@@ -322,8 +300,8 @@
             document.querySelectorAll('.layer-btn').forEach(function (btn) {
                 btn.classList.toggle('active', btn.dataset.layer === name);
             });
-            // Show/hide time badge (radar and infrared show timestamps)
-            timeBadge.style.display = (name === 'radar' || name === 'infrared') ? '' : 'none';
+            // Show/hide time badge (only radar has live timestamps)
+            timeBadge.style.display = (name === 'radar') ? '' : 'none';
         }
 
         document.querySelectorAll('.layer-btn').forEach(function (btn) {
@@ -335,9 +313,7 @@
         // --- Init ---
         radarState.active = true;
         loadRadarData();
-        loadInfraredData();
         setInterval(loadRadarData, 5 * 60 * 1000);
-        setInterval(loadInfraredData, 5 * 60 * 1000);
     })();
     </script>
 </body>
