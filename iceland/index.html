@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iceland Weather Radar</title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #0a0e17;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            color: #e0e0e0;
+            overflow: hidden;
+            height: 100vh;
+            height: 100dvh;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        .back-link {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            text-decoration: none;
+            color: rgba(255,255,255,0.6);
+            font-size: 0.9rem;
+            z-index: 1000;
+            background: rgba(0,0,0,0.4);
+            padding: 0.4rem 0.7rem;
+            border-radius: 6px;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        .controls {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            background: rgba(0,0,0,0.5);
+            padding: 0.6rem 1rem;
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+        }
+
+        .controls button {
+            background: rgba(255,255,255,0.15);
+            border: none;
+            color: #fff;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        .controls button:hover { background: rgba(255,255,255,0.25); }
+        .controls button.active { background: rgba(100,180,255,0.4); }
+
+        .time-label {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.7);
+            min-width: 50px;
+            text-align: center;
+            font-variant-numeric: tabular-nums;
+        }
+
+        .slider {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 140px;
+            height: 4px;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+            outline: none;
+        }
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        .slider::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: #fff;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+        }
+
+        .title-overlay {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            font-size: 0.85rem;
+            color: rgba(255,255,255,0.5);
+            background: rgba(0,0,0,0.4);
+            padding: 0.4rem 0.7rem;
+            border-radius: 6px;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+        }
+
+        /* Hide Leaflet attribution clutter on mobile */
+        .leaflet-control-attribution {
+            font-size: 9px !important;
+            background: rgba(0,0,0,0.4) !important;
+            color: rgba(255,255,255,0.4) !important;
+            backdrop-filter: blur(4px);
+        }
+        .leaflet-control-attribution a { color: rgba(255,255,255,0.5) !important; }
+
+        .leaflet-control-zoom { border: none !important; }
+        .leaflet-control-zoom a {
+            background: rgba(0,0,0,0.5) !important;
+            color: #fff !important;
+            border: none !important;
+            backdrop-filter: blur(8px);
+        }
+
+        @media (max-width: 500px) {
+            .controls { gap: 0.5rem; padding: 0.5rem 0.8rem; }
+            .slider { width: 100px; }
+        }
+    </style>
+</head>
+<body>
+    <a href="/" class="back-link">&larr; home</a>
+    <div class="title-overlay">Iceland Radar</div>
+    <div id="map"></div>
+
+    <div class="controls">
+        <button id="btn-play" title="Play/Pause">&#9654;</button>
+        <input type="range" class="slider" id="slider" min="0" max="0" value="0">
+        <span class="time-label" id="time-label">--:--</span>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+    (function () {
+        // Iceland center
+        var map = L.map('map', {
+            center: [64.963, -19.021],
+            zoom: 6,
+            zoomControl: true,
+            attributionControl: true
+        });
+
+        // Dark base tiles (CartoDB Dark Matter - free)
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> &copy; <a href="https://carto.com/">CARTO</a>',
+            subdomains: 'abcd',
+            maxZoom: 12
+        }).addTo(map);
+
+        // RainViewer radar state
+        var radarLayers = {};
+        var radarFrames = [];
+        var currentFrame = 0;
+        var playing = false;
+        var playInterval = null;
+        var apiHost = '';
+
+        var slider = document.getElementById('slider');
+        var timeLabel = document.getElementById('time-label');
+        var btnPlay = document.getElementById('btn-play');
+
+        function formatTime(ts) {
+            var d = new Date(ts * 1000);
+            var h = d.getUTCHours().toString().padStart(2, '0');
+            var m = d.getUTCMinutes().toString().padStart(2, '0');
+            return h + ':' + m;
+        }
+
+        function addRadarLayer(frame) {
+            if (radarLayers[frame.path]) return radarLayers[frame.path];
+            var layer = L.tileLayer(apiHost + frame.path + '/512/{z}/{x}/{y}/6/1_1.png', {
+                opacity: 0,
+                maxZoom: 12,
+                zIndex: 10
+            });
+            layer.addTo(map);
+            radarLayers[frame.path] = layer;
+            return layer;
+        }
+
+        function showFrame(idx) {
+            // Hide all
+            for (var key in radarLayers) {
+                radarLayers[key].setOpacity(0);
+            }
+            if (radarFrames[idx]) {
+                var layer = addRadarLayer(radarFrames[idx]);
+                layer.setOpacity(0.6);
+            }
+            currentFrame = idx;
+            slider.value = idx;
+            if (radarFrames[idx]) {
+                timeLabel.textContent = formatTime(radarFrames[idx].time);
+            }
+        }
+
+        function nextFrame() {
+            var next = (currentFrame + 1) % radarFrames.length;
+            showFrame(next);
+        }
+
+        function togglePlay() {
+            if (playing) {
+                clearInterval(playInterval);
+                playing = false;
+                btnPlay.innerHTML = '&#9654;';
+                btnPlay.classList.remove('active');
+            } else {
+                playing = true;
+                btnPlay.innerHTML = '&#9646;&#9646;';
+                btnPlay.classList.add('active');
+                playInterval = setInterval(nextFrame, 700);
+            }
+        }
+
+        btnPlay.addEventListener('click', togglePlay);
+
+        slider.addEventListener('input', function () {
+            showFrame(parseInt(this.value));
+            if (playing) togglePlay();
+        });
+
+        // Fetch radar data
+        function loadRadarData() {
+            fetch('https://api.rainviewer.com/public/weather-maps.json')
+                .then(function (res) { return res.json(); })
+                .then(function (data) {
+                    apiHost = data.host;
+                    // Combine past and nowcast frames
+                    radarFrames = (data.radar.past || []).concat(data.radar.nowcast || []);
+
+                    if (radarFrames.length === 0) return;
+
+                    slider.max = radarFrames.length - 1;
+                    slider.value = radarFrames.length - 1;
+
+                    // Preload all frames
+                    radarFrames.forEach(function (frame) {
+                        addRadarLayer(frame);
+                    });
+
+                    // Show latest frame
+                    showFrame(radarFrames.length - 1);
+
+                    // Auto-play
+                    togglePlay();
+                })
+                .catch(function (err) {
+                    console.error('RainViewer API error:', err);
+                    timeLabel.textContent = 'offline';
+                });
+        }
+
+        loadRadarData();
+
+        // Refresh radar data every 5 minutes
+        setInterval(loadRadarData, 5 * 60 * 1000);
+    })();
+    </script>
+</body>
+</html>
