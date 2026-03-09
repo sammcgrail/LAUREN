@@ -133,9 +133,9 @@
 
     <div class="layer-switcher">
         <button class="layer-btn active" data-layer="radar">Radar</button>
+        <button class="layer-btn" data-layer="infrared">Infrared</button>
         <button class="layer-btn" data-layer="satellite">Satellite</button>
-        <button class="layer-btn" data-layer="temp">Temperature</button>
-        <button class="layer-btn" data-layer="wind">Wind</button>
+        <button class="layer-btn" data-layer="clouds">Clouds</button>
     </div>
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -184,9 +184,10 @@
 
         function addRadarLayer(frame) {
             if (radarState.layers[frame.path]) return radarState.layers[frame.path];
-            var layer = L.tileLayer(radarState.host + frame.path + '/512/{z}/{x}/{y}/6/1_1.png', {
+            var layer = L.tileLayer(radarState.host + frame.path + '/256/{z}/{x}/{y}/2/1_1.png', {
                 opacity: 0,
                 maxZoom: 6,
+                maxNativeZoom: 7,
                 zIndex: 20
             });
             layer.addTo(map);
@@ -236,6 +237,35 @@
                 });
         }
 
+        // INFRARED (RainViewer satellite infrared - from same API)
+        var infraredState = { layer: null, path: '' };
+
+        function loadInfraredData() {
+            fetch('https://api.rainviewer.com/public/weather-maps.json')
+                .then(function (r) { return r.json(); })
+                .then(function (data) {
+                    var sat = data.satellite && data.satellite.infrared;
+                    if (!sat || sat.length === 0) return;
+                    var latest = sat[sat.length - 1];
+                    if (latest.path === infraredState.path) return;
+                    infraredState.path = latest.path;
+                    if (infraredState.layer) map.removeLayer(infraredState.layer);
+                    infraredState.layer = L.tileLayer(
+                        data.host + latest.path + '/256/{z}/{x}/{y}/0/0_0.png', {
+                        opacity: 0,
+                        maxZoom: 6,
+                        maxNativeZoom: 7,
+                        zIndex: 15
+                    });
+                    infraredState.layer.addTo(map);
+                    if (activeLayer === 'infrared') {
+                        infraredState.layer.setOpacity(0.75);
+                        timeBadge.textContent = formatTime(latest.time);
+                    }
+                })
+                .catch(function (err) { console.error('IR error:', err); });
+        }
+
         // SATELLITE (EOX Sentinel-2 cloudless)
         var satelliteLayer = L.tileLayer(
             'https://tiles.maps.eox.at/wmts/1.0.0/s2cloudless-2024_3857/default/g/{z}/{y}/{x}.jpg', {
@@ -245,30 +275,40 @@
             opacity: 0.85
         });
 
-        // TEMPERATURE (OpenWeatherMap free tier)
-        var tempLayer = L.tileLayer(
-            'https://tile.openweathermap.org/map/temp_new/{z}/{x}/{y}.png?appid=9de243494c0b295cca9337e1e96b00e2', {
-            attribution: '<a href="https://openweathermap.org">OpenWeatherMap</a>',
+        // CLOUDS (RainViewer radar coverage as cloud proxy + EUMETSAT via NASA GIBS)
+        var cloudsLayer = L.tileLayer(
+            'https://gibs.earthdata.nasa.gov/wmts/epsg3857/best/MODIS_Terra_CorrectedReflectance_TrueColor/default/{time}/GoogleMapsCompatible_Level9/{z}/{y}/{x}.jpg', {
+            attribution: '<a href="https://earthdata.nasa.gov">NASA GIBS</a>',
             maxZoom: 6,
+            maxNativeZoom: 9,
             zIndex: 15,
-            opacity: 0.7
-        });
-
-        // WIND (OpenWeatherMap free tier)
-        var windLayer = L.tileLayer(
-            'https://tile.openweathermap.org/map/wind_new/{z}/{x}/{y}.png?appid=9de243494c0b295cca9337e1e96b00e2', {
-            attribution: '<a href="https://openweathermap.org">OpenWeatherMap</a>',
-            maxZoom: 6,
-            zIndex: 15,
-            opacity: 0.7
+            opacity: 0.85,
+            time: new Date().toISOString().split('T')[0]
         });
 
         // --- Layer switching ---
         var overlayLayers = {
-            radar: { show: showRadar, hide: hideAllRadar },
-            satellite: { show: function () { satelliteLayer.addTo(map); }, hide: function () { map.removeLayer(satelliteLayer); } },
-            temp: { show: function () { tempLayer.addTo(map); }, hide: function () { map.removeLayer(tempLayer); } },
-            wind: { show: function () { windLayer.addTo(map); }, hide: function () { map.removeLayer(windLayer); } }
+            radar: {
+                show: showRadar,
+                hide: hideAllRadar
+            },
+            infrared: {
+                show: function () {
+                    if (infraredState.layer) infraredState.layer.setOpacity(0.75);
+                    timeBadge.style.display = '';
+                },
+                hide: function () {
+                    if (infraredState.layer) infraredState.layer.setOpacity(0);
+                }
+            },
+            satellite: {
+                show: function () { satelliteLayer.addTo(map); },
+                hide: function () { map.removeLayer(satelliteLayer); }
+            },
+            clouds: {
+                show: function () { cloudsLayer.addTo(map); },
+                hide: function () { map.removeLayer(cloudsLayer); }
+            }
         };
 
         var activeLayer = 'radar';
@@ -282,8 +322,8 @@
             document.querySelectorAll('.layer-btn').forEach(function (btn) {
                 btn.classList.toggle('active', btn.dataset.layer === name);
             });
-            // Show/hide time badge
-            timeBadge.style.display = name === 'radar' ? '' : 'none';
+            // Show/hide time badge (radar and infrared show timestamps)
+            timeBadge.style.display = (name === 'radar' || name === 'infrared') ? '' : 'none';
         }
 
         document.querySelectorAll('.layer-btn').forEach(function (btn) {
@@ -295,7 +335,9 @@
         // --- Init ---
         radarState.active = true;
         loadRadarData();
+        loadInfraredData();
         setInterval(loadRadarData, 5 * 60 * 1000);
+        setInterval(loadInfraredData, 5 * 60 * 1000);
     })();
     </script>
 </body>
