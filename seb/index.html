@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0a0a0f">
+  <title>seb</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    html, body {
+      -webkit-text-size-adjust: 100%;
+      text-size-adjust: 100%;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      background: #0a0a0f;
+    }
+    body {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      color: #eee;
+      min-height: 100vh;
+      min-height: 100dvh;
+      overflow: hidden;
+      position: relative;
+      padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    }
+    canvas#textbg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+    #cat {
+      position: fixed;
+      z-index: 10;
+      border-radius: 6px;
+      border: 8px solid #0a0a0f;
+      box-sizing: border-box;
+      object-fit: cover;
+      cursor: grab;
+      touch-action: none;
+      -webkit-user-drag: none;
+      user-drag: none;
+      pointer-events: auto;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.5);
+    }
+    #cat:active { cursor: grabbing; }
+    #cat.dragging { transform: scale(1.02); transition: transform 0.08s; }
+
+    .header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      text-align: center;
+      padding: 1.4rem 1rem 0.8rem;
+      pointer-events: none;
+      z-index: 20;
+    }
+    .header h1 {
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 1.6rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      color: #fff;
+      text-shadow: 0 0 16px rgba(0,0,0,0.8);
+    }
+    .header .sub {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.7);
+      margin-top: 0.2rem;
+      text-shadow: 0 0 12px rgba(0,0,0,0.8);
+    }
+    .header .back {
+      position: fixed;
+      top: 1rem;
+      left: 1rem;
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.55);
+      text-decoration: none;
+      pointer-events: auto;
+      text-shadow: 0 0 12px rgba(0,0,0,0.9);
+    }
+    .header .back:hover { color: #fff; }
+
+    .skills {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      bottom: 1.2rem;
+      z-index: 20;
+      max-width: min(640px, calc(100vw - 2rem));
+      width: max-content;
+      pointer-events: auto;
+    }
+    .skills-card {
+      background: rgba(10,10,15,0.78);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 14px;
+      padding: 0.9rem 1.1rem;
+      font-size: 0.78rem;
+      line-height: 1.55;
+      color: #ddd;
+    }
+    .skills-card .label {
+      font-size: 0.7rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: rgba(255,255,255,0.55);
+      margin-bottom: 0.4rem;
+    }
+    .skills-card .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.15rem 1rem;
+    }
+    .skills-card .grid span {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      min-width: 0;
+    }
+    .skills-card .grid b { color: #ffd86b; font-weight: 600; }
+
+    .hint {
+      position: fixed;
+      left: 50%;
+      transform: translateX(-50%);
+      top: 5.5rem;
+      z-index: 15;
+      font-size: 0.78rem;
+      color: rgba(255,255,255,0.7);
+      pointer-events: none;
+      text-shadow: 0 0 12px rgba(0,0,0,0.9);
+      transition: opacity 0.4s;
+    }
+    .hint.hidden { opacity: 0; }
+
+    @media (max-width: 600px) {
+      .header h1 { font-size: 1.3rem; }
+      .header .sub { font-size: 0.78rem; }
+      .skills-card { font-size: 0.72rem; padding: 0.75rem 0.9rem; }
+      .skills-card .grid { grid-template-columns: 1fr 1fr; gap: 0.1rem 0.6rem; }
+      .hint { top: 4.6rem; font-size: 0.72rem; }
+    }
+  </style>
+</head>
+<body>
+  <canvas id="textbg"></canvas>
+  <img id="cat" src="cat.png" alt="seb cat" draggable="false">
+
+  <div class="header">
+    <a href="/" class="back">&larr; home</a>
+    <h1>hi, i'm seb</h1>
+    <div class="sub">sam's personal AI — drag the cat</div>
+  </div>
+
+  <div class="hint" id="hint">drag &middot; pinch to resize</div>
+
+  <div class="skills">
+    <div class="skills-card">
+      <div class="label">things I can do</div>
+      <div class="grid">
+        <span><b>research</b> &mdash; deep dives, fact checks</span>
+        <span><b>images</b> &mdash; Imagen 4, pixel art</span>
+        <span><b>music</b> &mdash; Lyria 3 originals</span>
+        <span><b>tts</b> &mdash; voices, narration</span>
+        <span><b>code</b> &mdash; ship apps end-to-end</span>
+        <span><b>scrape</b> &mdash; any webpage as text</span>
+        <span><b>3d print</b> &mdash; slice + send to Bambu</span>
+        <span><b>browse</b> &mdash; headless Chromium</span>
+        <span><b>summarize</b> &mdash; audio, video, PDFs</span>
+        <span><b>transcribe</b> &mdash; whisper local</span>
+        <span><b>memory</b> &mdash; long-term recall</span>
+        <span><b>more</b> &mdash; just ask sam</span>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      var canvas = document.getElementById('textbg');
+      var ctx = canvas.getContext('2d');
+      var cat = document.getElementById('cat');
+      var hint = document.getElementById('hint');
+
+      var W = 0, H = 0, dpr = 1;
+      var CHAR_W = 9, CHAR_H = 16;
+      var COLS = 0, ROWS = 0;
+      var startTime = performance.now();
+      var hasDragged = false;
+
+      var loremText =
+        'The quick brown fox jumps over the lazy dog. ' +
+        'Pack my box with five dozen liquor jugs. ' +
+        'How vexingly quick daft zebras jump. ' +
+        'The five boxing wizards jump quickly. ' +
+        'Sphinx of black quartz, judge my vow. ' +
+        'Two driven jocks help fax my big quiz. ' +
+        'Crazy Frederick bought many very exquisite opal jewels. ' +
+        'We promptly judged antique ivory buckles for the next prize. ' +
+        'Glib jocks quiz nymph to vex dwarf. ' +
+        'Jackdaws love my big sphinx of quartz. ';
+
+      function resize() {
+        dpr = window.devicePixelRatio || 1;
+        W = window.innerWidth;
+        H = window.innerHeight;
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+        // Adjust CHAR sizes for screen
+        if (W < 500) {
+          CHAR_W = 7; CHAR_H = 12;
+        } else if (W < 900) {
+          CHAR_W = 8; CHAR_H = 14;
+        } else {
+          CHAR_W = 9; CHAR_H = 16;
+        }
+        COLS = Math.ceil(W / CHAR_W);
+        ROWS = Math.ceil(H / CHAR_H);
+
+        // Default cat size & position
+        if (!cat.dataset.set) {
+          var size = Math.min(W, H) * (W < 600 ? 0.45 : 0.32);
+          var aspect = (cat.naturalHeight || 5) / (cat.naturalWidth || 4);
+          var pw = size, ph = size * aspect;
+          cat.style.width = pw + 'px';
+          cat.style.height = ph + 'px';
+          cat.style.left = ((W - pw) / 2) + 'px';
+          cat.style.top = ((H - ph) / 2 - H * 0.04) + 'px';
+        }
+      }
+
+      cat.addEventListener('load', function () { resize(); });
+      window.addEventListener('resize', resize);
+      resize();
+
+      function getCatRect() {
+        var r = cat.getBoundingClientRect();
+        return { x: r.left, y: r.top, w: r.width, h: r.height };
+      }
+
+      function loop() {
+        var t = (performance.now() - startTime) / 1000;
+        ctx.clearRect(0, 0, W, H);
+        ctx.font = (CHAR_H - 2) + 'px ui-monospace, Menlo, Consolas, monospace';
+        ctx.textBaseline = 'top';
+
+        var rect = getCatRect();
+        var cLeft = rect.x;
+        var cRight = rect.x + rect.w;
+        var cTop = rect.y;
+        var cBottom = rect.y + rect.h;
+
+        var ci = Math.floor(t * 2);
+
+        for (var y = 0; y < ROWS; y++) {
+          var py = y * CHAR_H;
+          var rowInCat = (py + CHAR_H > cTop && py < cBottom);
+
+          for (var x = 0; x < COLS; x++) {
+            var px = x * CHAR_W;
+
+            if (rowInCat && px + CHAR_W > cLeft && px < cRight) {
+              ci++;
+              continue;
+            }
+
+            var ch = loremText[ci % loremText.length];
+            ci++;
+            if (ch === ' ') continue;
+
+            // Distance from cat center for radial gradient
+            var ccx = (cLeft + cRight) / 2;
+            var ccy = (cTop + cBottom) / 2;
+            var dx = px - ccx;
+            var dy = py - ccy;
+            var dist = Math.sqrt(dx * dx + dy * dy);
+            var maxD = Math.sqrt(W * W + H * H) * 0.5;
+            var nd = dist / maxD;
+
+            var hue = (y * 3 + x * 0.5 + t * 15) % 360;
+            var bright = 30 + nd * 55;
+            var sat = 45 + nd * 45;
+
+            // Edge glow on rows that intersect the cat
+            if (rowInCat) {
+              var el = Math.abs(px - cLeft);
+              var er = Math.abs(px - (cRight - CHAR_W));
+              var ed = Math.min(el, er);
+              if (ed < 4 * CHAR_W) {
+                bright += (4 - ed / CHAR_W) * 6;
+                hue = (hue + 25) % 360;
+              }
+            }
+
+            ctx.fillStyle = 'hsl(' + hue + ',' + Math.min(95, sat) + '%,' + Math.min(80, bright) + '%)';
+            ctx.fillText(ch, px, py);
+          }
+        }
+        requestAnimationFrame(loop);
+      }
+      requestAnimationFrame(loop);
+
+      // ---- DRAG ----
+      var dragging = false;
+      var dragOffX = 0, dragOffY = 0;
+      var pinchActive = false;
+      var lastPinchDist = 0;
+      var startW = 0;
+
+      function clampPos(x, y, w, h) {
+        var nx = Math.max(-w * 0.3, Math.min(W - w * 0.7, x));
+        var ny = Math.max(-h * 0.2, Math.min(H - h * 0.5, y));
+        return { x: nx, y: ny };
+      }
+
+      cat.addEventListener('pointerdown', function (e) {
+        if (e.pointerType === 'touch' && e.isPrimary === false) return;
+        dragging = true;
+        hasDragged = true;
+        cat.classList.add('dragging');
+        var rect = getCatRect();
+        dragOffX = e.clientX - rect.x;
+        dragOffY = e.clientY - rect.y;
+        cat.dataset.set = '1';
+        try { cat.setPointerCapture(e.pointerId); } catch (ex) {}
+        if (hint) hint.classList.add('hidden');
+        e.preventDefault();
+      });
+
+      cat.addEventListener('pointermove', function (e) {
+        if (!dragging) return;
+        e.preventDefault();
+        var rect = getCatRect();
+        var nx = e.clientX - dragOffX;
+        var ny = e.clientY - dragOffY;
+        var c = clampPos(nx, ny, rect.w, rect.h);
+        cat.style.left = c.x + 'px';
+        cat.style.top = c.y + 'px';
+      });
+
+      function endDrag(e) {
+        dragging = false;
+        cat.classList.remove('dragging');
+        try { cat.releasePointerCapture(e.pointerId); } catch (ex) {}
+      }
+      cat.addEventListener('pointerup', endDrag);
+      cat.addEventListener('pointercancel', endDrag);
+
+      // ---- PINCH RESIZE (mobile) ----
+      cat.addEventListener('touchstart', function (e) {
+        if (e.touches.length === 2) {
+          e.preventDefault();
+          dragging = false;
+          pinchActive = true;
+          var dx = e.touches[0].clientX - e.touches[1].clientX;
+          var dy = e.touches[0].clientY - e.touches[1].clientY;
+          lastPinchDist = Math.sqrt(dx * dx + dy * dy);
+          startW = cat.getBoundingClientRect().width;
+          if (hint) hint.classList.add('hidden');
+        }
+      }, { passive: false });
+
+      cat.addEventListener('touchmove', function (e) {
+        if (!pinchActive || e.touches.length < 2) return;
+        e.preventDefault();
+        var dx = e.touches[0].clientX - e.touches[1].clientX;
+        var dy = e.touches[0].clientY - e.touches[1].clientY;
+        var dist = Math.sqrt(dx * dx + dy * dy);
+        var scale = dist / lastPinchDist;
+        var newW = startW * scale;
+        newW = Math.max(80, Math.min(W * 0.85, newW));
+        var aspect = (cat.naturalHeight || 5) / (cat.naturalWidth || 4);
+        var rect = cat.getBoundingClientRect();
+        var cx = rect.left + rect.width / 2;
+        var cy = rect.top + rect.height / 2;
+        cat.style.width = newW + 'px';
+        cat.style.height = (newW * aspect) + 'px';
+        cat.style.left = (cx - newW / 2) + 'px';
+        cat.style.top = (cy - newW * aspect / 2) + 'px';
+      }, { passive: false });
+
+      cat.addEventListener('touchend', function (e) {
+        if (e.touches.length < 2) pinchActive = false;
+      });
+
+      // ---- SCROLL WHEEL RESIZE (desktop) ----
+      cat.addEventListener('wheel', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var rect = cat.getBoundingClientRect();
+        var delta = e.deltaY > 0 ? -20 : 20;
+        var newW = rect.width + delta;
+        newW = Math.max(80, Math.min(W * 0.85, newW));
+        var aspect = (cat.naturalHeight || 5) / (cat.naturalWidth || 4);
+        var cx = rect.left + rect.width / 2;
+        var cy = rect.top + rect.height / 2;
+        cat.style.width = newW + 'px';
+        cat.style.height = (newW * aspect) + 'px';
+        cat.style.left = (cx - newW / 2) + 'px';
+        cat.style.top = (cy - newW * aspect / 2) + 'px';
+        if (hint) hint.classList.add('hidden');
+      }, { passive: false });
+
+      // Auto-hide hint after 6s
+      setTimeout(function () { if (hint && !hasDragged) hint.classList.add('hidden'); }, 6000);
+    })();
+  </script>
+</body>
+</html>
