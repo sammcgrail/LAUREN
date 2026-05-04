@@ -8,16 +8,23 @@
   <meta name="theme-color" content="#0a0a0f">
   <title>seb</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
     html, body {
       -webkit-text-size-adjust: 100%;
       text-size-adjust: 100%;
       touch-action: none;
-      -webkit-touch-callout: none;
-      -webkit-user-select: none;
-      user-select: none;
       background: #0a0a0f;
     }
+    /* Interactive UI islands: allow tap, kill double-tap zoom + pinch */
+    .header, .skills, .skills-card, .back, .hint { touch-action: manipulation; }
     body {
       font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
       color: #eee;
@@ -185,6 +192,24 @@
 
   <script>
     (function () {
+      // ---- iOS double-tap-zoom / magnifier / gesture killers ----
+      // user-scalable=no is unreliable on modern iOS Safari; belt-and-suspenders below.
+      document.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+      document.addEventListener('selectstart', function (e) { e.preventDefault(); });
+      document.addEventListener('gesturestart', function (e) { e.preventDefault(); }, { passive: false });
+      document.addEventListener('gesturechange', function (e) { e.preventDefault(); }, { passive: false });
+      document.addEventListener('gestureend', function (e) { e.preventDefault(); }, { passive: false });
+      document.addEventListener('dblclick', function (e) { e.preventDefault(); }, { passive: false });
+      // Detect rapid double-tap and kill it — but skip links/buttons so they still work.
+      var lastTouchEnd = 0;
+      document.addEventListener('touchend', function (e) {
+        var now = Date.now();
+        if (now - lastTouchEnd <= 350 && !e.target.closest('a, button, input, select, textarea, [role="button"]')) {
+          e.preventDefault();
+        }
+        lastTouchEnd = now;
+      }, { passive: false });
+
       var canvas = document.getElementById('textbg');
       var ctx = canvas.getContext('2d');
       var cat = document.getElementById('cat');
